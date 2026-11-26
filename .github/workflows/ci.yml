@@ -1,0 +1,151 @@
+name: PeopleCore HRMS Enterprise CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # Stage 1: Static Analysis & Type Checking
+  lint-and-typecheck:
+    name: Code Quality & Type Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: backend/package.json
+
+      - name: Backend Typecheck & Prisma Validation
+        run: |
+          cd backend
+          npm ci
+          npx prisma validate
+          npx tsc --noEmit
+
+  # Stage 2: Python Payroll Engine & Analytics Unit & Benchmark Tests (Assessment 05 & 06)
+  python-tests:
+    name: Python Decimal Payroll Engine & Analytics Pytest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+
+      - name: Install Python Dependencies
+        run: |
+          cd python-services
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Execute Pytest Suite (Rounding, Invariants, Edge Cases)
+        env:
+          PYTHONPATH: python-services
+        run: |
+          python -m pytest python-services/app/tests --tb=short
+
+  # Stage 3: Core API Integration & Database Migration Validation (Assessment 02, 03, 12)
+  backend-tests:
+    name: Core API & Database Migration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+          POSTGRES_DB: peoplecore_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Backend Dependencies
+        run: |
+          cd backend
+          npm ci
+
+      - name: Validate Prisma Database Migrations
+        env:
+          DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/peoplecore_test?schema=public
+        run: |
+          cd backend
+          npx prisma generate
+          npx prisma migrate reset --force --skip-seed
+
+      - name: Execute Automated Test Suite
+        env:
+          DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/peoplecore_test?schema=public
+          JWT_ACCESS_SECRET: ci_test_access_jwt_secret_key_12345
+          JWT_REFRESH_SECRET: ci_test_refresh_jwt_secret_key_12345
+        run: |
+          cd backend
+          npm test
+
+  # Stage 4: Container Build & Docker Compose Verification (Assessment 09)
+  docker-build:
+    name: Container Build & Compose Health Validation
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, python-tests, backend-tests]
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Verify Docker Compose Config
+        run: |
+          docker compose config
+
+      - name: Build Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./docker/Dockerfile.backend
+          push: false
+          tags: peoplecore-backend:ci
+
+      - name: Build Python Service Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./python-services
+          file: ./docker/Dockerfile.python
+          push: false
+          tags: peoplecore-python-service:ci
+
+  # Stage 5: Security Scan
+  security-scan:
+    name: Dependency Vulnerability Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Node Security Audit
+        run: |
+          cd backend
+          npm audit --audit-level=high || true

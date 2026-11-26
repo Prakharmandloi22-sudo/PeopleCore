@@ -1,0 +1,227 @@
+openapi: 3.0.3
+info:
+  title: PeopleCore HRMS Enterprise REST API
+  description: >
+    Production REST APIs for Employee Lifecycle, Attendance, Leave Management,
+    Decimal-Precision Payroll Processing, and Workforce Analytics.
+  version: 1.0.0
+  contact:
+    name: PeopleCore Platform Engineering
+    email: engineering@peoplecore.local
+
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Local Express API Development Gateway
+  - url: http://localhost:8000/api/v1
+    description: Python Payroll & Workforce Analytics Microservice
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: FORBIDDEN
+            message:
+              type: string
+              example: Access denied. Insufficient permissions.
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: admin@peoplecore.local
+        password:
+          type: string
+          format: password
+          example: Admin@123456
+
+    Employee:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        employeeNumber:
+          type: string
+          example: EMP-00201
+        firstName:
+          type: string
+          example: Jordan
+        lastName:
+          type: string
+          example: Lee
+        departmentId:
+          type: string
+        baseSalary:
+          type: number
+          description: Masked to '***CONFIDENTIAL***' for unauthorized roles.
+          example: 115000.00
+        currency:
+          type: string
+          example: USD
+        bankAccountNumber:
+          type: string
+          example: "****7889"
+
+    PayrollRunRequest:
+      type: object
+      required: [periodCode, name, startDate, endDate, payDate]
+      properties:
+        periodCode:
+          type: string
+          example: 2026-03-MONTHLY
+        name:
+          type: string
+          example: March 2026 Regular Payroll
+        startDate:
+          type: string
+          format: date
+          example: "2026-03-01"
+        endDate:
+          type: string
+          format: date
+          example: "2026-03-31"
+        payDate:
+          type: string
+          format: date
+          example: "2026-04-01"
+
+security:
+  - BearerAuth: []
+
+paths:
+  /auth/login:
+    post:
+      summary: Authenticate user & retrieve JWT tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /employees:
+    get:
+      summary: List employees with dynamic RBAC field masking
+      parameters:
+        - name: departmentId
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of employees
+
+  /attendance/check-in:
+    post:
+      summary: Record employee check-in with shift evaluation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Check-in successful
+
+  /attendance/check-out:
+    post:
+      summary: Record employee check-out (supports overnight spans)
+      responses:
+        '200':
+          description: Check-out recorded & hours calculated
+
+  /leaves/request:
+    post:
+      summary: Apply for leave with collision & balance check
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [leaveTypeId, startDate, endDate, totalDays, reason]
+              properties:
+                leaveTypeId:
+                  type: string
+                startDate:
+                  type: string
+                  format: date
+                endDate:
+                  type: string
+                  format: date
+                totalDays:
+                  type: number
+                reason:
+                  type: string
+      responses:
+        '201':
+          description: Leave requested successfully
+        '400':
+          description: Overlapping leave or insufficient balance
+
+  /payroll/runs:
+    post:
+      summary: Trigger idempotent payroll run
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayrollRunRequest'
+      responses:
+        '201':
+          description: Payroll finalized & payslips created
+        '409':
+          description: Conflict - Period already finalized (Idempotency Guard)
+
+  /payroll/export/bank:
+    post:
+      summary: Export NACHA ACH Direct Deposit file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [periodId]
+              properties:
+                periodId:
+                  type: string
+      responses:
+        '200':
+          description: 94-character fixed-width NACHA file with SHA-256 hash

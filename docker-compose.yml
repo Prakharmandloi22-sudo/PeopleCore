@@ -1,0 +1,135 @@
+version: '3.8'
+
+services:
+  # 1. PostgreSQL System of Record (Assessment 03 & 14)
+  postgres:
+    image: postgres:16-alpine
+    container_name: peoplecore-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-peoplecore}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-peoplecore}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - peoplecore-network
+
+  # 2. Redis Cache & Job Broker
+  redis:
+    image: redis:7-alpine
+    container_name: peoplecore-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - peoplecore-network
+
+  # 3. Python Decimal Payroll Engine & Workforce Analytics (Assessment 05 & 06)
+  python-service:
+    build:
+      context: ./python-services
+      dockerfile: ../docker/Dockerfile.python
+    container_name: peoplecore-python-service
+    restart: always
+    environment:
+      PYTHON_SERVICE_PORT: 8000
+      PYTHON_API_KEY: ${PYTHON_API_KEY:-peoplecore_internal_python_service_secret_token_2026}
+      NODE_ENV: production
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - peoplecore-network
+
+  # 4. Core Node.js Express REST API (Assessment 02, 04, 07, 08)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/Dockerfile.backend
+    container_name: peoplecore-backend-api
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      python-service:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      APP_PORT: 5000
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-peoplecore}?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PYTHON_SERVICE_URL: http://python-service:8000
+      PYTHON_API_KEY: ${PYTHON_API_KEY:-peoplecore_internal_python_service_secret_token_2026}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-peoplecore_super_secure_access_secret_change_in_production_key_2026}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-peoplecore_super_secure_refresh_secret_change_in_production_key_2026}
+    ports:
+      - "5000:5000"
+    volumes:
+      - uploads_data:/app/uploads
+    networks:
+      - peoplecore-network
+
+  # 5. Next.js App Router Frontend (Assessment 01)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/Dockerfile.frontend
+    container_name: peoplecore-frontend-ui
+    restart: always
+    depends_on:
+      - backend
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: http://localhost:5000/api/v1
+    ports:
+      - "3000:3000"
+    networks:
+      - peoplecore-network
+
+  # 6. Nginx Reverse Proxy (Assessment 14)
+  nginx:
+    image: nginx:alpine
+    container_name: peoplecore-nginx
+    restart: always
+    depends_on:
+      - frontend
+      - backend
+      - python-service
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - peoplecore-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads_data:
+
+networks:
+  peoplecore-network:
+    driver: bridge

@@ -1,0 +1,174 @@
+{
+  "info": {
+    "_postman_id": "peoplecore-hrms-collection-v1",
+    "name": "PeopleCore HRMS API Collection",
+    "description": "Postman Collection for PeopleCore HRMS Platform - 15 Assessment Handshake",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "pythonUrl",
+      "value": "http://localhost:8000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01. Auth - Login as Admin",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"admin@peoplecore.local\",\n  \"password\": \"Admin@123456\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "02. Employees - List All (RBAC Masked)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/employees",
+          "host": ["{{baseUrl}}"],
+          "path": ["employees"]
+        }
+      }
+    },
+    {
+      "name": "03. Attendance - Clock In",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"notes\": \"Testing web portal clock-in\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/attendance/check-in",
+          "host": ["{{baseUrl}}"],
+          "path": ["attendance", "check-in"]
+        }
+      }
+    },
+    {
+      "name": "04. Attendance - Clock Out (Overnight Check)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/attendance/check-out",
+          "host": ["{{baseUrl}}"],
+          "path": ["attendance", "check-out"]
+        }
+      }
+    },
+    {
+      "name": "05. Leaves - Submit Request",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"leaveTypeId\": \"ANNUAL\",\n  \"startDate\": \"2026-06-01\",\n  \"endDate\": \"2026-06-03\",\n  \"totalDays\": 3,\n  \"reason\": \"Summer trip\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/leaves/request",
+          "host": ["{{baseUrl}}"],
+          "path": ["leaves", "request"]
+        }
+      }
+    },
+    {
+      "name": "06. Payroll - Execute Run (Idempotency Enforced)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"periodCode\": \"2026-03-MONTHLY\",\n  \"name\": \"March 2026 Regular Payroll\",\n  \"startDate\": \"2026-03-01\",\n  \"endDate\": \"2026-03-31\",\n  \"payDate\": \"2026-04-01\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/payroll/runs",
+          "host": ["{{baseUrl}}"],
+          "path": ["payroll", "runs"]
+        }
+      }
+    },
+    {
+      "name": "07. Payroll - Export NACHA ACH File",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"periodId\": \"pp-2026-02\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/payroll/export/bank",
+          "host": ["{{baseUrl}}"],
+          "path": ["payroll", "export", "bank"]
+        }
+      }
+    },
+    {
+      "name": "08. Python Microservice - Workforce Analytics Summary",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{pythonUrl}}/analytics/summary",
+          "host": ["{{pythonUrl}}"],
+          "path": ["analytics", "summary"]
+        }
+      }
+    },
+    {
+      "name": "09. Python Microservice - Payroll Benchmark Suite",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{pythonUrl}}/payroll/benchmark?iterations=1000",
+          "host": ["{{pythonUrl}}"],
+          "path": ["payroll", "benchmark"],
+          "query": [
+            { "key": "iterations", "value": "1000" }
+          ]
+        }
+      }
+    }
+  ]
+}
